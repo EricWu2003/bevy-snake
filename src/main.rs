@@ -139,6 +139,25 @@ fn snake_movement(
     }
 }
 
+struct GrowthEvent;
+
+fn snake_eating(
+    mut commands: Commands,
+    mut growth_writer: EventWriter<GrowthEvent>,
+    food_positions: Query<(Entity, &Position), With<Food>>,
+    head_positions: Query<&Position, With<SnakeHead>>,
+) {
+    for head_pos in head_positions.iter() {
+        for (ent, food_pos) in food_positions.iter() {
+            if head_pos == food_pos {
+                commands.entity(ent).despawn();
+                growth_writer.send(GrowthEvent);
+            }
+        }
+    }
+
+}
+
 fn snake_movement_input(
     keyboard_input: Res<Input<KeyCode>>,
     mut heads: Query<&mut SnakeHead>,
@@ -230,6 +249,7 @@ fn main() {
             SystemSet::new()
                 .with_run_criteria(FixedTimestep::step(0.15))
                 .with_system(snake_movement)
+                .with_system(snake_eating.after(snake_movement))
         )
         .add_system(snake_movement_input.before(snake_movement))
         .add_plugins(DefaultPlugins.set(WindowPlugin{ 
@@ -244,5 +264,6 @@ fn main() {
         .insert_resource(ClearColor(Color::rgb(0.04, 0.04, 0.04)))
         .insert_resource(SnakeSegments::default())
         .add_system(bevy::window::close_on_esc)
+        .add_event::<GrowthEvent>()
         .run();
 }
