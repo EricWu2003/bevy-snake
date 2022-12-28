@@ -108,6 +108,7 @@ fn snake_movement(
     segments: ResMut<SnakeSegments>,
     mut head_positions: Query<(Entity, &SnakeHead)>,
     mut positions: Query<&mut Position>,
+    mut last_tail_position: ResMut<LastTailPosition>,
 ) {
     if let Some((head_entity, head)) = head_positions.iter_mut().next() {
         let segment_positions = segments
@@ -135,7 +136,19 @@ fn snake_movement(
             .for_each(|(pos, segment)| {
                 *positions.get_mut(*segment).unwrap() = *pos;
             });
+        *last_tail_position = LastTailPosition(Some(*segment_positions.last().unwrap()))
 
+    }
+}
+
+fn snake_growth(
+    commands: Commands,
+    last_tail_position: Res<LastTailPosition>,
+    mut segments: ResMut<SnakeSegments>,
+    mut growth_reader: EventReader<GrowthEvent>,
+) {
+    if growth_reader.iter().next().is_some() {
+        segments.push(spawn_segment(commands, last_tail_position.0.unwrap()))
     }
 }
 
@@ -195,6 +208,9 @@ struct SnakeSegment;
 #[derive(Default, Deref, DerefMut, Resource)]
 struct SnakeSegments(Vec<Entity>);
 
+#[derive(Default, Resource)]
+struct LastTailPosition(Option<Position>);
+
 fn spawn_segment(mut commands: Commands, position: Position) -> Entity {
     commands.spawn(SpriteBundle{
         sprite: Sprite {
@@ -250,6 +266,7 @@ fn main() {
                 .with_run_criteria(FixedTimestep::step(0.15))
                 .with_system(snake_movement)
                 .with_system(snake_eating.after(snake_movement))
+                .with_system(snake_growth.after(snake_eating))
         )
         .add_system(snake_movement_input.before(snake_movement))
         .add_plugins(DefaultPlugins.set(WindowPlugin{ 
@@ -263,6 +280,7 @@ fn main() {
         }))
         .insert_resource(ClearColor(Color::rgb(0.04, 0.04, 0.04)))
         .insert_resource(SnakeSegments::default())
+        .insert_resource(LastTailPosition::default())
         .add_system(bevy::window::close_on_esc)
         .add_event::<GrowthEvent>()
         .run();
