@@ -4,6 +4,7 @@ use bevy::time::FixedTimestep;
 
 const SNAKE_HEAD_COLOR: Color = Color::rgb(0.7, 0.7, 0.7);
 const FOOD_COLOR: Color = Color::rgb(1.0, 0.0, 1.0);
+const SNAKE_SEGMENT_COLOR: Color = Color::rgb(0.3, 0.3, 0.3);
 
 const ARENA_WIDTH: u32 = 10;
 const ARENA_HEIGHT: u32 = 10;
@@ -50,23 +51,28 @@ fn setup_camera(mut commands: Commands) {
     commands.spawn(Camera2dBundle::default());
 }
 
-fn spawn_snake(mut commands: Commands) {
-    commands.spawn(SpriteBundle {
-        sprite: Sprite {
-            color: SNAKE_HEAD_COLOR,
-            ..default()
-        },
-        transform: Transform { 
-            scale: Vec3::new(10.0, 10.0, 10.0),
-            ..default()
-        },
-        ..default()
-    })
-    .insert(SnakeHead {
-        direction: Direction::Right
-    })
-    .insert(Position {x:3, y:3})
-    .insert(Size::square(0.8));
+fn spawn_snake(
+    mut commands: Commands,
+    mut segments: ResMut<SnakeSegments>
+) {
+    *segments = SnakeSegments(vec![
+        commands.spawn(SpriteBundle{
+                sprite: Sprite {
+                    color: SNAKE_HEAD_COLOR,
+                    ..default()
+                },
+                ..default()
+            })
+            .insert(SnakeHead {
+                direction: Direction::Right
+            })
+            .insert(Position {x: 3, y:3})
+            .insert(Size::square(0.8))
+            .insert(SnakeSegment)
+            .id(),
+        spawn_segment(commands, Position {x:3, y:2})
+    ]);
+
 }
 
 fn size_scaling(windows: Res<Windows>, mut q: Query<(&Size, &mut Transform)>) {
@@ -99,23 +105,37 @@ fn position_translation(windows: Res<Windows>, mut q: Query<(&Position, &mut Tra
 }
 
 fn snake_movement(
-    mut head_positions: Query<(&mut Position, &SnakeHead)>,
+    segments: ResMut<SnakeSegments>,
+    mut head_positions: Query<(Entity, &SnakeHead)>,
+    mut positions: Query<&mut Position>,
 ) {
-    if let Some((mut position, head)) = head_positions.iter_mut().next() {
+    if let Some((head_entity, head)) = head_positions.iter_mut().next() {
+        let segment_positions = segments
+            .iter()
+            .map(|e| *positions.get_mut(*e).unwrap())
+            .collect::<Vec<Position>>();
+        let mut head_pos = positions.get_mut(head_entity).unwrap();
         match &head.direction {
             Direction::Left => {
-                position.x -= 1;
-            },
+                head_pos.x -= 1;
+            }
             Direction::Right => {
-                position.x += 1;
-            },
+                head_pos.x += 1;
+            }
             Direction::Up => {
-                position.y += 1;
-            },
+                head_pos.y += 1;
+            }
             Direction::Down => {
-                position.y -= 1;
+                head_pos.y -= 1;
             }
         }
+        segment_positions
+            .iter()
+            .zip(segments.iter().skip(1))
+            .for_each(|(pos, segment)| {
+                *positions.get_mut(*segment).unwrap() = *pos;
+            });
+
     }
 }
 
@@ -149,6 +169,28 @@ struct SnakeHead {
 
 #[derive(Component)]
 struct Food;
+
+#[derive(Component)]
+struct SnakeSegment;
+
+#[derive(Default, Deref, DerefMut, Resource)]
+struct SnakeSegments(Vec<Entity>);
+
+fn spawn_segment(mut commands: Commands, position: Position) -> Entity {
+    commands.spawn(SpriteBundle{
+        sprite: Sprite {
+            color: SNAKE_SEGMENT_COLOR,
+            ..default()
+        },
+        ..default()
+    })
+    .insert(SnakeSegment)
+    .insert(position)
+    .insert(Size::square(0.65))
+    .id()
+
+}
+
 
 
 fn food_spawner(mut commands: Commands) {
@@ -200,6 +242,7 @@ fn main() {
             ..default()
         }))
         .insert_resource(ClearColor(Color::rgb(0.04, 0.04, 0.04)))
+        .insert_resource(SnakeSegments::default())
         .add_system(bevy::window::close_on_esc)
         .run();
 }
